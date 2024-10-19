@@ -10,46 +10,50 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.falldetection.ui.theme.FallDetectionTheme
+import kotlin.math.sqrt
+import java.text.SimpleDateFormat
+import java.util.*
 
-// La classe MainActivity estende ComponentActivity e implementa SensorEventListener per gestire i sensori
 class MainActivity : ComponentActivity(), SensorEventListener {
 
-    // Definizione del SensorManager per accedere ai sensori del dispositivo
     private lateinit var sensorManager: SensorManager
-    // Variabile per il sensore accelerometro
     private var accelerometer: Sensor? = null
 
-    // Variabili di stato per mantenere i valori dell'accelerometro e poterli mostrare sull'interfaccia utente
-    private var xValue by mutableStateOf(0f)  // Valore sull'asse X
-    private var yValue by mutableStateOf(0f)  // Valore sull'asse Y
-    private var zValue by mutableStateOf(0f)  // Valore sull'asse Z
+    // Variabili di stato per mantenere i valori dell'accelerometro e altri dettagli
+    private var xValue by mutableStateOf(0f)
+    private var yValue by mutableStateOf(0f)
+    private var zValue by mutableStateOf(0f)
+    private var totalAcceleration by mutableStateOf(0f)
+    private var isFalling by mutableStateOf(false)
+    private var fallTimestamp by mutableStateOf("")
 
-    // Metodo onCreate: eseguito alla creazione dell'attività
+    // Definizione della soglia per l'accelerazione lineare che indicherà una possibile caduta
+    private val FALL_THRESHOLD = 25.0f  // Valore soglia per la caduta (in m/s^2)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Abilitazione Edge to Edge (opzionale per una UI che occupa tutto lo schermo)
         enableEdgeToEdge()
 
         // Inizializzazione del SensorManager per accedere ai sensori del dispositivo
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        // Ottenere il sensore accelerometro dal SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         // Verifica se l'accelerometro è disponibile e registra un listener per ricevere aggiornamenti
         accelerometer?.let {
-            // Registra il listener per l'accelerometro
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         } ?: run {
-            // Stampa un messaggio di errore se l'accelerometro non è disponibile
             Log.e("SensorError", "Accelerometro non disponibile")
         }
 
@@ -57,11 +61,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         setContent {
             FallDetectionTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // Chiamata al composable che visualizza i valori dell'accelerometro
                     AccelerometerDisplay(
                         x = xValue,
                         y = yValue,
                         z = zValue,
+                        totalAcceleration = totalAcceleration,
+                        isFalling = isFalling,
+                        fallTimestamp = fallTimestamp,
+                        onFalseAlarmClicked = { isFalling = false },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -69,55 +76,129 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    // Metodo onSensorChanged: chiamato quando ci sono nuovi dati dal sensore
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            // Aggiorna i valori dell'accelerometro con i dati ricevuti
-            xValue = event.values[0]  // Valore sull'asse X
-            yValue = event.values[1]  // Valore sull'asse Y
-            zValue = event.values[2]  // Valore sull'asse Z
+            // Ottieni i valori dell'accelerometro
+            xValue = event.values[0]
+            yValue = event.values[1]
+            zValue = event.values[2]
+
+            // Calcolo dell'accelerazione totale per determinare una caduta
+            totalAcceleration = sqrt(xValue * xValue + yValue * yValue + zValue * zValue)
+
+            // Controlla se l'accelerazione totale supera la soglia di caduta
+            if (totalAcceleration > FALL_THRESHOLD) {
+                isFalling = true
+                // Memorizza l'ora della caduta usando SimpleDateFormat
+                val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                fallTimestamp = sdf.format(Date())
+            }
 
             // Log dei valori per il debug
-            Log.d("Accelerometro", "X: $xValue, Y: $yValue, Z: $zValue")
+            Log.d("Accelerometro", "X: $xValue, Y: $yValue, Z: $zValue, Accel Totale: $totalAcceleration, Caduta: $isFalling")
         }
     }
 
-    // Metodo onAccuracyChanged: chiamato se l'accuratezza del sensore cambia (non usato in questo caso)
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
-        // Non necessario per ora, possiamo lasciare vuoto
+        // Non necessario per ora
     }
 }
 
-// Funzione Composable che visualizza i valori dell'accelerometro sull'interfaccia utente
 @Composable
-fun AccelerometerDisplay(x: Float, y: Float, z: Float, modifier: Modifier = Modifier) {
+fun AccelerometerDisplay(
+    x: Float,
+    y: Float,
+    z: Float,
+    totalAcceleration: Float,
+    isFalling: Boolean,
+    fallTimestamp: String,
+    onFalseAlarmClicked: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),  // Margine di 16dp intorno alla colonna
-        verticalArrangement = Arrangement.Center,  // Allinea verticalmente al centro
-        horizontalAlignment = Alignment.CenterHorizontally  // Allinea orizzontalmente al centro
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Banner per la caduta
+        if (isFalling) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Red)
+                    .padding(16.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Text(
+                        text = "CADUTA RILEVATA!",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "È un falso allarme?",
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onFalseAlarmClicked,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                    ) {
+                        Text(
+                            text = "Sì, è un falso allarme",
+                            color = Color.Red,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         // Titolo della sezione che mostra i valori dell'accelerometro
         Text(text = "Valori dell'Accelerometro", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))  // Spazio tra titolo e il primo valore
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Visualizzazione del valore dell'asse X
         Text(text = "X: $x", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(8.dp))  // Spazio tra i valori
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Visualizzazione del valore dell'asse Y
         Text(text = "Y: $y", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(8.dp))  // Spazio tra i valori
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Visualizzazione del valore dell'asse Z
         Text(text = "Z: $z", style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Visualizzazione dell'accelerazione totale
+        Text(text = "Accelerazione Totale: $totalAcceleration m/s²", style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Visualizzazione del timestamp della caduta, se rilevata
+        if (isFalling) {
+            Text(text = "Ora della Caduta: $fallTimestamp", style = MaterialTheme.typography.bodyLarge)
+        }
     }
 }
 
-// Funzione di anteprima per visualizzare l'interfaccia in Android Studio
 @Preview(showBackground = true)
 @Composable
 fun AccelerometerDisplayPreview() {
     FallDetectionTheme {
-        // Anteprima del composable con valori di esempio
-        AccelerometerDisplay(x = 0.0f, y = 0.0f, z = 0.0f)
+        AccelerometerDisplay(
+            x = 0.0f,
+            y = 0.0f,
+            z = 0.0f,
+            totalAcceleration = 0.0f,
+            isFalling = true,
+            fallTimestamp = "15:30:00",
+            onFalseAlarmClicked = {}
+        )
     }
 }
