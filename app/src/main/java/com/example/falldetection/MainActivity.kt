@@ -6,6 +6,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,9 +39,28 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var totalAcceleration by mutableStateOf(0f)
     private var isFalling by mutableStateOf(false)
     private var fallTimestamp by mutableStateOf("")
+    private var monitoringFall by mutableStateOf(false)
 
     // Definizione della soglia per l'accelerazione lineare che indicherà una possibile caduta
     private val FALL_THRESHOLD = 25.0f  // Valore soglia per la caduta (in m/s^2)
+    private val Y_THRESHOLD = 5.0f  // Soglia dell'asse Y per determinare se la persona è sdraiata
+    private val FALL_MONITORING_TIME = 10_000L // Tempo di monitoraggio per evitare falsi positivi (10 secondi)
+
+    // Handler e Runnable per gestire il timer di controllo della caduta
+    private val handler = Handler(Looper.getMainLooper())
+    private val fallMonitorRunnable = Runnable {
+        // Verifica il valore di Y dopo 10 secondi per determinare se è una falsa caduta
+        if (yValue in -Y_THRESHOLD..Y_THRESHOLD) {
+            // Se Y è ancora tra -5 e 5, significa che la persona è sdraiata
+            isFalling = true
+            Log.d("FallDetection", "Caduta confermata dopo il controllo di 10 secondi.")
+        } else {
+            // Se Y è tornato a valori normali, consideriamo la caduta un falso positivo
+            isFalling = false
+            monitoringFall = false
+            Log.d("FallDetection", "Falso positivo rilevato, caduta annullata.")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,7 +89,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         totalAcceleration = totalAcceleration,
                         isFalling = isFalling,
                         fallTimestamp = fallTimestamp,
-                        onFalseAlarmClicked = { isFalling = false },
+                        onFalseAlarmClicked = {
+                            isFalling = false
+                            monitoringFall = false
+                            handler.removeCallbacks(fallMonitorRunnable)
+                        },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -87,11 +112,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             totalAcceleration = sqrt(xValue * xValue + yValue * yValue + zValue * zValue)
 
             // Controlla se l'accelerazione totale supera la soglia di caduta
-            if (totalAcceleration > FALL_THRESHOLD) {
+            if (totalAcceleration > FALL_THRESHOLD && !monitoringFall) {
                 isFalling = true
+                monitoringFall = true
+
                 // Memorizza l'ora della caduta usando SimpleDateFormat
                 val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                 fallTimestamp = sdf.format(Date())
+
+                // Avvia il timer per la verifica del falso positivo (10 secondi)
+                handler.postDelayed(fallMonitorRunnable, FALL_MONITORING_TIME)
+
+                Log.d("FallDetection", "Possibile caduta rilevata. Inizio monitoraggio per 10 secondi.")
             }
 
             // Log dei valori per il debug
