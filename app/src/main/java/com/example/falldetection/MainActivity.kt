@@ -18,7 +18,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+// import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -39,16 +39,17 @@ import com.google.android.gms.location.LocationServices
 import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.*
+import android.telephony.SmsManager
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
 
-    private var xValue by mutableFloatStateOf(0f)
-    private var yValue by mutableFloatStateOf(0f)
-    private var zValue by mutableFloatStateOf(0f)
-    private var totalAcceleration by mutableFloatStateOf(0f)
+    private var xValue by mutableStateOf(0f)
+    private var yValue by mutableStateOf(0f)
+    private var zValue by mutableStateOf(0f)
+    private var totalAcceleration by mutableStateOf(0f)
     private var isFalling by mutableStateOf(false)
     private var fallTimestamp by mutableStateOf("")
     private var monitoringFall by mutableStateOf(false)
@@ -68,6 +69,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (yValue in -yThreshold..yThreshold) {
             isFalling = true
             Log.d("FallDetection", "Caduta confermata dopo il controllo di 10 secondi.")
+
+            // Invia SMS ai contatti di emergenza poiché la caduta è confermata
+            val emergencyContact = "+39"  // Contatto di emergenza fisso per ora
+            sendEmergencySms(emergencyContact)
+
         } else {
             isFalling = false
             monitoringFall = false
@@ -78,7 +84,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        enableEdgeToEdge()
+        // enableEdgeToEdge()
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -251,6 +257,32 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             cancel(notificationID)
         }
     }
+
+    // Funzione per inviare un messaggio SMS al contatto di emergenza
+    private fun sendEmergencySms(contactNumber: String) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.SEND_SMS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.SEND_SMS),
+                3
+            )
+            return
+        }
+
+        try {
+            val message = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
+            val smsManager = getSystemService(SmsManager::class.java)
+            smsManager?.sendTextMessage(contactNumber, null, message, null, null)
+            Log.d("FallDetection", "SMS di emergenza inviato a $contactNumber")
+        } catch (e: Exception) {
+            Log.e("FallDetection", "Errore durante l'invio dell'SMS: ${e.message}")
+        }
+    }
+
 }
 
 @Composable
