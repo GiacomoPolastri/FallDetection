@@ -15,10 +15,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.telephony.SmsManager
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-// import androidx.activity.enableEdgeToEdge
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -39,7 +40,6 @@ import com.google.android.gms.location.LocationServices
 import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.*
-import android.telephony.SmsManager
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
@@ -54,26 +54,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var fallTimestamp by mutableStateOf("")
     private var monitoringFall by mutableStateOf(false)
     private var lastKnownLocation by mutableStateOf("")
+    private var emergencyContact by mutableStateOf("")
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    private val fallThreshold = 25.0f
-    private val yThreshold = 5.0f
-    private val fallMonitoringTime = 10_000L
+    private val FALL_THRESHOLD = 25.0f
+    private val Y_THRESHOLD = 5.0f
+    private val FALL_MONITORING_TIME = 10_000L
 
-    private val channelID = "fall_detection_channel"
-    private val notificationID = 1
+    private val CHANNEL_ID = "fall_detection_channel"
+    private val NOTIFICATION_ID = 1
 
     private val handler = Handler(Looper.getMainLooper())
     private val fallMonitorRunnable = Runnable {
-        if (yValue in -yThreshold..yThreshold) {
+        if (yValue in -Y_THRESHOLD..Y_THRESHOLD) {
             isFalling = true
             Log.d("FallDetection", "Caduta confermata dopo il controllo di 10 secondi.")
-
-            // Invia SMS ai contatti di emergenza poiché la caduta è confermata
-            val emergencyContact = "+39"  // Contatto di emergenza fisso per ora
             sendEmergencySms(emergencyContact)
-
         } else {
             isFalling = false
             monitoringFall = false
@@ -84,7 +81,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // enableEdgeToEdge()
+        enableEdgeToEdge()
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -99,7 +96,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         createNotificationChannel()
 
-        requestNotificationPermission()
+        // Carica il numero di emergenza salvato in SharedPreferences
+        val sharedPref = getPreferences(Context.MODE_PRIVATE)
+        emergencyContact = sharedPref.getString("emergency_contact", "") ?: ""
 
         setContent {
             FallDetectionTheme {
@@ -110,6 +109,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             .padding(innerPadding)
                     ) {
                         Header(modifier = Modifier.fillMaxWidth())
+
+                        EmergencyContactInput(
+                            emergencyContact = emergencyContact,
+                            onEmergencyContactChanged = { contact ->
+                                emergencyContact = contact
+                                // Salva il numero di emergenza in SharedPreferences
+                                with(sharedPref.edit()) {
+                                    putString("emergency_contact", emergencyContact)
+                                    apply()
+                                }
+                            }
+                        )
+
                         AccelerometerDisplay(
                             x = xValue,
                             y = yValue,
@@ -139,7 +151,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             totalAcceleration = sqrt(xValue * xValue + yValue * yValue + zValue * zValue)
 
-            if (totalAcceleration > fallThreshold && !monitoringFall) {
+            if (totalAcceleration > FALL_THRESHOLD && !monitoringFall) {
                 isFalling = true
                 monitoringFall = true
 
@@ -148,7 +160,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 getCurrentLocation()
 
-                handler.postDelayed(fallMonitorRunnable, fallMonitoringTime)
+                handler.postDelayed(fallMonitorRunnable, FALL_MONITORING_TIME)
 
                 sendFallNotification()
 
@@ -193,73 +205,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Rilevamento Caduta"
             val descriptionText = "Notifiche per rilevamento caduta"
             val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(channelID, name, importance).apply {
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
             }
             val notificationManager: NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
-    }
-
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    2
-                )
-            }
         }
     }
 
-    private fun sendFallNotification() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+    private fun sendEmergencySms(contactNumber: String) {
+        if (contactNumber.isEmpty()) {
+            Log.e("FallDetection", "Nessun contatto di emergenza configurato.")
             return
         }
 
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(this, channelID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("Caduta Rilevata")
-            .setContentText("È stata rilevata una caduta. Apri l'app per confermare.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-
-        with(NotificationManagerCompat.from(this)) {
-            notify(notificationID, builder.build())
-        }
-    }
-
-    private fun cancelNotification() {
-        with(NotificationManagerCompat.from(this)) {
-            cancel(notificationID)
-        }
-    }
-
-    // Funzione per inviare un messaggio SMS al contatto di emergenza
-    private fun sendEmergencySms(contactNumber: String) {
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.SEND_SMS
@@ -283,6 +247,38 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun cancelNotification() {
+        with(NotificationManagerCompat.from(this)) {
+            cancel(NOTIFICATION_ID)
+        }
+    }
+
+    private fun sendFallNotification() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)  // Usa un'icona predefinita di Android
+            .setContentTitle("Caduta Rilevata")
+            .setContentText("È stata rilevata una caduta. Apri l'app per confermare.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 500, 1000, 500)) // Aggiungi vibrazione
+            .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)) // Aggiungi suono
+
+        with(NotificationManagerCompat.from(this)) {
+            notify(NOTIFICATION_ID, builder.build())
+        }
+    }
+
 }
 
 @Composable
@@ -298,6 +294,27 @@ fun Header(modifier: Modifier = Modifier) {
             color = Color(0xFF00008B),
             fontWeight = FontWeight.Bold,
             fontSize = 24.sp
+        )
+    }
+}
+
+@Composable
+fun EmergencyContactInput(
+    emergencyContact: String,
+    onEmergencyContactChanged: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(text = "Numero di emergenza", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        TextField(
+            value = emergencyContact,
+            onValueChange = { onEmergencyContactChanged(it) },
+            label = { Text("Inserisci numero di emergenza") },
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -387,6 +404,10 @@ fun AccelerometerDisplayPreview() {
     FallDetectionTheme {
         Column {
             Header()
+            EmergencyContactInput(
+                emergencyContact = "",
+                onEmergencyContactChanged = {}
+            )
             AccelerometerDisplay(
                 x = 0.0f,
                 y = 0.0f,
