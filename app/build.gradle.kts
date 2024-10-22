@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.example.falldetection"
-    compileSdk = 34
+    compileSdk = 34 // Verifica se c'è una versione più recente disponibile
 
     defaultConfig {
         applicationId = "com.example.falldetection"
         minSdk = 30
-        targetSdk = 34
+        targetSdk = 34 // Aggiorna alla versione più recente disponibile se necessario
         versionCode = 1
         versionName = "1.0"
 
@@ -30,11 +30,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -45,6 +45,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/NOTICE.md" // Esclude file duplicati
+            excludes += "META-INF/LICENSE.md" // Esclude file duplicati
         }
     }
 }
@@ -66,18 +68,21 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    // Dipendenze aggiunte manualmente in Kotlin Script
     // Dipendenze per AndroidX AppCompat
     implementation("androidx.appcompat:appcompat:1.4.2")
 
     // Dipendenze per Google Play Services - Location
     implementation("com.google.android.gms:play-services-location:21.0.1")
 
-    // Dipendenze per Jetpack Compose
+    // Dipendenze per Jetpack Compose (assicurati che queste siano già presenti)
     implementation("androidx.activity:activity-compose:1.4.0")
     implementation("androidx.compose.ui:ui:1.0.5")
     implementation("androidx.compose.material3:material3:1.0.0-alpha01")
 
     // Altre dipendenze standard
     implementation("androidx.core:core-ktx:1.7.0")
+
+    // Dipendenza per JavaMail (utilizzata per l'invio delle email)
+    implementation("com.sun.mail:android-mail:1.6.7")
+    implementation("com.sun.mail:android-activation:1.6.7")
 }

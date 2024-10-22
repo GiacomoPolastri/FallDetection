@@ -1,14 +1,13 @@
 package com.example.falldetection
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-//import android.content.SharedPreferences
+// import android.content.SharedPreferences
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -21,7 +20,7 @@ import android.telephony.SmsManager
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-//import androidx.activity.enableEdgeToEdge
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -42,16 +41,20 @@ import com.google.android.gms.location.LocationServices
 import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.*
+import javax.mail.*
+import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeMessage
+import java.util.Properties
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
 
-    private var xValue by mutableStateOf(0f)
-    private var yValue by mutableStateOf(0f)
-    private var zValue by mutableStateOf(0f)
-    private var totalAcceleration by mutableStateOf(0f)
+    private var xValue by mutableFloatStateOf(0f)
+    private var yValue by mutableFloatStateOf(0f)
+    private var zValue by mutableFloatStateOf(0f)
+    private var totalAcceleration by mutableFloatStateOf(0f)
     private var isFalling by mutableStateOf(false)
     private var fallTimestamp by mutableStateOf("")
     private var monitoringFall by mutableStateOf(false)
@@ -61,7 +64,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    private val FALL_THRESHOLD = 15.0f
+    private val FALL_THRESHOLD = 25.0f
     private val Y_THRESHOLD = 5.0f
     private val FALL_MONITORING_TIME = 10_000L
 
@@ -76,7 +79,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             // Invia SMS e Email ai contatti di emergenza poiché la caduta è confermata
             sendEmergencySms(emergencyContact)
-            sendEmergencyEmail(emergencyEmail)
+            sendEmergencyEmailUsingJavaMail(emergencyEmail)
         } else {
             isFalling = false
             monitoringFall = false
@@ -87,7 +90,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        //enableEdgeToEdge()
+        enableEdgeToEdge()
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -221,28 +224,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun createNotificationChannel() {
-
-        val name = "Rilevamento Caduta"
-        val descriptionText = "Notifiche per rilevamento caduta"
-        val importance = NotificationManager.IMPORTANCE_HIGH
-        val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-            description = descriptionText
-        }
-        val notificationManager: NotificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-
+        // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Rilevamento Caduta"
+            val descriptionText = "Notifiche per rilevamento caduta"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        // }
     }
 
     private fun sendFallNotification() {
-        // Controllo del permesso POST_NOTIFICATIONS per Android 13 e successivi
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-                // Richiedi il permesso di inviare notifiche
                 ActivityCompat.requestPermissions(
                     this,
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
@@ -308,30 +309,50 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    @SuppressLint("QueryPermissionsNeeded")
-    private fun sendEmergencyEmail(emergencyEmail: String) {
+    private fun sendEmergencyEmailUsingJavaMail(emergencyEmail: String) {
         if (emergencyEmail.isEmpty()) {
             Log.e("FallDetection", "Nessun indirizzo email configurato.")
             return
         }
 
+        val username = "falldetection6@gmail.com" // Email da cui verranno inviate le email
+        val password = "CiccioneMarmellata8!" // Password dell'email da cui inviare (meglio usare password dell'app)
+
+        val props = Properties().apply {
+            put("mail.smtp.auth", "true")
+            put("mail.smtp.starttls.enable", "true")
+            put("mail.smtp.host", "smtp.gmail.com")
+            put("mail.smtp.port", "587")
+        }
+
+        val session = Session.getInstance(props, object : Authenticator() {
+            override fun getPasswordAuthentication(): PasswordAuthentication {
+                return PasswordAuthentication(username, password)
+            }
+        })
+
         try {
-            val subject = "Emergenza: Caduta Rilevata"
-            val body = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
-            val emailIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "message/rfc822"
-                putExtra(Intent.EXTRA_EMAIL, arrayOf(emergencyEmail))
-                putExtra(Intent.EXTRA_SUBJECT, subject)
-                putExtra(Intent.EXTRA_TEXT, body)
+            val message = MimeMessage(session).apply {
+                setFrom(InternetAddress(username))
+                setRecipients(
+                    Message.RecipientType.TO,
+                    InternetAddress.parse(emergencyEmail)
+                )
+                subject = "Emergenza: Caduta Rilevata"
+                setText("Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation")
             }
 
-            if (emailIntent.resolveActivity(packageManager) != null) {
-                startActivity(Intent.createChooser(emailIntent, "Invia email con:"))
-            } else {
-                Log.e("FallDetection", "Nessuna app per email disponibile.")
-            }
-        } catch (e: Exception) {
-            Log.e("FallDetection", "Errore durante l'invio dell'email: ${e.message}")
+            Thread {
+                try {
+                    Transport.send(message)
+                    Log.d("FallDetection", "Email di emergenza inviata a $emergencyEmail")
+                } catch (e: MessagingException) {
+                    Log.e("FallDetection", "Errore durante l'invio dell'email: ${e.message}")
+                }
+            }.start()
+
+        } catch (e: MessagingException) {
+            Log.e("FallDetection", "Errore durante la preparazione dell'email: ${e.message}")
         }
     }
 
