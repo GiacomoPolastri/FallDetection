@@ -1,12 +1,14 @@
 package com.example.falldetection
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+//import android.content.SharedPreferences
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -55,22 +57,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var monitoringFall by mutableStateOf(false)
     private var lastKnownLocation by mutableStateOf("")
     private var emergencyContact by mutableStateOf("")
+    private var emergencyEmail by mutableStateOf("")
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    private val fallThreshold = 14.0f
-    private val yThreshold = 5.0f
-    private val fallMonitoringTime = 10_000L
+    private val FALL_THRESHOLD = 15.0f
+    private val Y_THRESHOLD = 5.0f
+    private val FALL_MONITORING_TIME = 10_000L
 
-    private val channelID = "fall_detection_channel"
-    private val notificationID = 1
+    private val CHANNEL_ID = "fall_detection_channel"
+    private val NOTIFICATION_ID = 1
 
     private val handler = Handler(Looper.getMainLooper())
     private val fallMonitorRunnable = Runnable {
-        if (yValue in -yThreshold..yThreshold) {
+        if (yValue in -Y_THRESHOLD..Y_THRESHOLD) {
             isFalling = true
             Log.d("FallDetection", "Caduta confermata dopo il controllo di 10 secondi.")
+
+            // Invia SMS e Email ai contatti di emergenza poiché la caduta è confermata
             sendEmergencySms(emergencyContact)
+            sendEmergencyEmail(emergencyEmail)
         } else {
             isFalling = false
             monitoringFall = false
@@ -96,9 +102,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         createNotificationChannel()
 
-        // Carica il numero di emergenza salvato in SharedPreferences
+        // Carica il numero di emergenza e l'email salvati in SharedPreferences
         val sharedPref = getPreferences(Context.MODE_PRIVATE)
         emergencyContact = sharedPref.getString("emergency_contact", "") ?: ""
+        emergencyEmail = sharedPref.getString("emergency_email", "") ?: ""
 
         setContent {
             FallDetectionTheme {
@@ -112,11 +119,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                         EmergencyContactInput(
                             emergencyContact = emergencyContact,
+                            emergencyEmail = emergencyEmail,
                             onEmergencyContactChanged = { contact ->
                                 emergencyContact = contact
                                 // Salva il numero di emergenza in SharedPreferences
                                 with(sharedPref.edit()) {
                                     putString("emergency_contact", emergencyContact)
+                                    apply()
+                                }
+                            },
+                            onEmergencyEmailChanged = { email ->
+                                emergencyEmail = email
+                                // Salva l'email di emergenza in SharedPreferences
+                                with(sharedPref.edit()) {
+                                    putString("emergency_email", emergencyEmail)
                                     apply()
                                 }
                             }
@@ -151,7 +167,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             totalAcceleration = sqrt(xValue * xValue + yValue * yValue + zValue * zValue)
 
-            if (totalAcceleration > fallThreshold && !monitoringFall) {
+            if (totalAcceleration > FALL_THRESHOLD && !monitoringFall) {
                 isFalling = true
                 monitoringFall = true
 
@@ -160,7 +176,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 getCurrentLocation()
 
-                handler.postDelayed(fallMonitorRunnable, fallMonitoringTime)
+                handler.postDelayed(fallMonitorRunnable, FALL_MONITORING_TIME)
 
                 sendFallNotification()
 
@@ -209,54 +225,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val name = "Rilevamento Caduta"
         val descriptionText = "Notifiche per rilevamento caduta"
         val importance = NotificationManager.IMPORTANCE_HIGH
-        val channel = NotificationChannel(channelID, name, importance).apply {
+        val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
             description = descriptionText
         }
         val notificationManager: NotificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
 
-    }
-
-    private fun sendEmergencySms(contactNumber: String) {
-        if (contactNumber.isEmpty()) {
-            Log.e("FallDetection", "Nessun contatto di emergenza configurato.")
-            return
-        }
-
-        // Controllo del permesso per SEND_SMS
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.SEND_SMS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.SEND_SMS),
-                3
-            )
-            return
-        }
-
-        try {
-            // Ottieni l'istanza di SmsManager in modo moderno
-            val message = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
-            val smsManager = getSystemService(SmsManager::class.java)
-            smsManager?.sendTextMessage(contactNumber, null, message, null, null)
-            Log.d("FallDetection", "SMS di emergenza inviato a $contactNumber")
-        } catch (e: SecurityException) {
-            // Gestisce l'eccezione nel caso in cui il permesso venga negato durante l'invio dell'SMS
-            Log.e("FallDetection", "Errore di sicurezza durante l'invio dell'SMS: ${e.message}")
-        } catch (e: Exception) {
-            // Gestione generica di altre eccezioni
-            Log.e("FallDetection", "Errore durante l'invio dell'SMS: ${e.message}")
-        }
-    }
-
-    private fun cancelNotification() {
-        with(NotificationManagerCompat.from(this)) {
-            cancel(notificationID)
-        }
     }
 
     private fun sendFallNotification() {
@@ -277,39 +252,94 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
         }
 
-        try {
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
-            val pendingIntent: PendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-            val builder = NotificationCompat.Builder(this, channelID)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                .setContentTitle("Caduta Rilevata")
-                .setContentText("È stata rilevata una caduta. Apri l'app per confermare.")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .setVibrate(longArrayOf(0, 500, 1000, 500)) // Aggiungi vibrazione
-                .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)) // Aggiungi suono
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Caduta Rilevata")
+            .setContentText("È stata rilevata una caduta. Apri l'app per confermare.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 500, 1000, 500))
+            .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
 
-            with(NotificationManagerCompat.from(this)) {
-                notify(notificationID, builder.build())
-            }
-        } catch (e: SecurityException) {
-            // Gestisce l'eccezione nel caso in cui il permesso venga negato durante l'invio della notifica
-            Log.e("FallDetection", "Errore di sicurezza durante l'invio della notifica: ${e.message}")
-        } catch (e: Exception) {
-            // Gestione generica di altre eccezioni
-            Log.e("FallDetection", "Errore durante l'invio della notifica: ${e.message}")
+        with(NotificationManagerCompat.from(this)) {
+            notify(NOTIFICATION_ID, builder.build())
         }
     }
 
+    private fun sendEmergencySms(contactNumber: String) {
+        if (contactNumber.isEmpty()) {
+            Log.e("FallDetection", "Nessun contatto di emergenza configurato.")
+            return
+        }
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.SEND_SMS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.SEND_SMS),
+                3
+            )
+            return
+        }
+
+        try {
+            val message = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
+            val smsManager = getSystemService(SmsManager::class.java)
+            smsManager?.sendTextMessage(contactNumber, null, message, null, null)
+            Log.d("FallDetection", "SMS di emergenza inviato a $contactNumber")
+        } catch (e: SecurityException) {
+            Log.e("FallDetection", "Errore di sicurezza durante l'invio dell'SMS: ${e.message}")
+        } catch (e: Exception) {
+            Log.e("FallDetection", "Errore durante l'invio dell'SMS: ${e.message}")
+        }
+    }
+
+    @SuppressLint("QueryPermissionsNeeded")
+    private fun sendEmergencyEmail(emergencyEmail: String) {
+        if (emergencyEmail.isEmpty()) {
+            Log.e("FallDetection", "Nessun indirizzo email configurato.")
+            return
+        }
+
+        try {
+            val subject = "Emergenza: Caduta Rilevata"
+            val body = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
+            val emailIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "message/rfc822"
+                putExtra(Intent.EXTRA_EMAIL, arrayOf(emergencyEmail))
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, body)
+            }
+
+            if (emailIntent.resolveActivity(packageManager) != null) {
+                startActivity(Intent.createChooser(emailIntent, "Invia email con:"))
+            } else {
+                Log.e("FallDetection", "Nessuna app per email disponibile.")
+            }
+        } catch (e: Exception) {
+            Log.e("FallDetection", "Errore durante l'invio dell'email: ${e.message}")
+        }
+    }
+
+    private fun cancelNotification() {
+        with(NotificationManagerCompat.from(this)) {
+            cancel(NOTIFICATION_ID)
+        }
+    }
 }
 
 @Composable
@@ -332,7 +362,9 @@ fun Header(modifier: Modifier = Modifier) {
 @Composable
 fun EmergencyContactInput(
     emergencyContact: String,
-    onEmergencyContactChanged: (String) -> Unit
+    emergencyEmail: String,
+    onEmergencyContactChanged: (String) -> Unit,
+    onEmergencyEmailChanged: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -345,12 +377,22 @@ fun EmergencyContactInput(
             value = emergencyContact,
             onValueChange = { onEmergencyContactChanged(it) },
             label = { Text("Inserisci numero di emergenza") },
-            placeholder = { Text("+391234567891") },  // Placeholder con esempio di numero di telefono
+            placeholder = { Text("+391234567891") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(text = "Email di emergenza", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        TextField(
+            value = emergencyEmail,
+            onValueChange = { onEmergencyEmailChanged(it) },
+            label = { Text("Inserisci email di emergenza") },
+            placeholder = { Text("esempio@email.com") },
             modifier = Modifier.fillMaxWidth()
         )
     }
 }
-
 
 @Composable
 fun AccelerometerDisplay(
@@ -438,8 +480,10 @@ fun AccelerometerDisplayPreview() {
         Column {
             Header()
             EmergencyContactInput(
-                emergencyContact = "",
-                onEmergencyContactChanged = {}
+                emergencyContact = "+391234567891",
+                emergencyEmail = "esempio@email.com",
+                onEmergencyContactChanged = {},
+                onEmergencyEmailChanged = {}
             )
             AccelerometerDisplay(
                 x = 0.0f,
