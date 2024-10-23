@@ -315,8 +315,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
-        val username = "falldetection6@gmail.com" // Email da cui verranno inviate le email
-        val password = "CiccioneMarmellata8!" // Password dell'email da cui inviare (meglio usare password dell'app)
+        val username = System.getenv("EMAIL_USERNAME") ?: ""
+        val password = System.getenv("EMAIL_PASSWORD") ?: ""
 
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
