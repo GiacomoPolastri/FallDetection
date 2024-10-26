@@ -38,6 +38,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.falldetection.ui.theme.FallDetectionTheme
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import java.io.IOException
 import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.*
@@ -64,7 +65,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    private val FALL_THRESHOLD = 25.0f
+    private val FALL_THRESHOLD = 15.0f
     private val Y_THRESHOLD = 5.0f
     private val FALL_MONITORING_TIME = 10_000L
 
@@ -159,6 +160,29 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             }
+        }
+    }
+
+    private fun loadCredentials(): Pair<String, String> {
+        val properties = Properties()
+        return try {
+            val inputStream = assets.open("config.properties")
+            properties.load(inputStream)
+
+            // Aggiungi una stampa per vedere se il file viene caricato correttamente
+            Log.d("FallDetection", "File di configurazione caricato con successo")
+
+            val username = properties.getProperty("email.username")
+            val password = properties.getProperty("email.password")
+
+            // Verifica se le proprietà vengono lette correttamente
+            Log.d("FallDetection", "Username: $username")
+            Log.d("FallDetection", "Password: $password")
+
+            Pair(username ?: "", password ?: "")
+        } catch (e: IOException) {
+            Log.e("FallDetection", "Errore durante il caricamento del file di configurazione: ${e.message}")
+            Pair("", "")
         }
     }
 
@@ -315,8 +339,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
-        val username = System.getenv("EMAIL_USERNAME") ?: ""
-        val password = System.getenv("EMAIL_PASSWORD") ?: ""
+        // Carica le credenziali dal file di configurazione
+        val (username, password) = loadCredentials()
+        Log.d("FallDetection", "Caricate le credenziali: username=$username")
 
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
