@@ -65,8 +65,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
-    private val FALL_THRESHOLD = 15.0f
-    private val Y_THRESHOLD = 5.0f
+    private val FALL_THRESHOLD = 25.0f
+    private val Y_THRESHOLD = 4.0f
     private val FALL_MONITORING_TIME = 10_000L
 
     private val CHANNEL_ID = "fall_detection_channel"
