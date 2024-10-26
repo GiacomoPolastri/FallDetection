@@ -12,6 +12,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             // Invia SMS e Email ai contatti di emergenza poiché la caduta è confermata
             sendEmergencySms(emergencyContact)
             sendEmergencyEmailUsingJavaMail(emergencyEmail)
+            makeEmergencyCall(emergencyContact)
         } else {
             isFalling = false
             monitoringFall = false
@@ -380,6 +382,31 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             Log.e("FallDetection", "Errore durante la preparazione dell'email: ${e.message}")
         }
     }
+
+    private fun makeEmergencyCall(phoneNumber: String) {
+        if (phoneNumber.isEmpty()) {
+            Log.e("FallDetection", "Nessun numero di emergenza configurato.")
+            return
+        }
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CALL_PHONE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CALL_PHONE),
+                5
+            )
+            return
+        }
+
+        val callIntent = Intent(Intent.ACTION_CALL)
+        callIntent.data = Uri.parse("tel:$phoneNumber")
+        startActivity(callIntent)
+    }
+
 
     private fun cancelNotification() {
         with(NotificationManagerCompat.from(this)) {
