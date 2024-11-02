@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val fallMonitorRunnable = Runnable {
         if (yValue in -Y_THRESHOLD..Y_THRESHOLD) {
             isFalling = true
-            Log.d("FallDetection", "Caduta confermata dopo il controllo di 10 secondi.")
+            Log.d("FallDetection", "Fall confirmed after 10 seconds of monitoring.")
 
             // Invia SMS e Email ai contatti di emergenza poiché la caduta è confermata
             sendEmergencySms(emergencyContact)
@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         } else {
             isFalling = false
             monitoringFall = false
-            Log.d("FallDetection", "Falso positivo rilevato, caduta annullata.")
+            Log.d("FallDetection", "False alarm, fall cancelled.")
         }
     }
 
@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         } ?: run {
-            Log.e("SensorError", "Accelerometro non disponibile")
+            Log.e("SensorError", "Accelerometer not available")
         }
 
         createNotificationChannel()
@@ -171,19 +171,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val inputStream = assets.open("config.properties")
             properties.load(inputStream)
 
-            // Aggiungi una stampa per vedere se il file viene caricato correttamente
-            Log.d("FallDetection", "File di configurazione caricato con successo")
+            // Add a log to check if the file is loaded correctly
+            Log.d("FallDetection", "Configuration file loaded successfully")
 
             val username = properties.getProperty("email.username")
             val password = properties.getProperty("email.password")
 
-            // Verifica se le proprietà vengono lette correttamente
+            // Verify if properties are read correctly
             Log.d("FallDetection", "Username: $username")
             Log.d("FallDetection", "Password: $password")
 
             Pair(username ?: "", password ?: "")
         } catch (e: IOException) {
-            Log.e("FallDetection", "Errore durante il caricamento del file di configurazione: ${e.message}")
+            Log.e("FallDetection", "Error while loading configuration file: ${e.message}")
             Pair("", "")
         }
     }
@@ -209,10 +209,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 sendFallNotification()
 
-                Log.d("FallDetection", "Possibile caduta rilevata. Inizio monitoraggio per 10 secondi.")
+                Log.d(
+                    "FallDetection",
+                    "Possible fall detected. Starting monitoring for 10 seconds."
+                )
             }
 
-            Log.d("Accelerometro", "X: $xValue, Y: $yValue, Z: $zValue, Accel Totale: $totalAcceleration, Caduta: $isFalling")
+            Log.d(
+                "Accelerometer",
+                "X: $xValue, Y: $yValue, Z: $zValue, Total Accel: $totalAcceleration, Falling: $isFalling"
+            )
         }
     }
 
@@ -240,27 +246,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             if (location != null) {
                 val lat = location.latitude
                 val lon = location.longitude
-                lastKnownLocation = "Latitudine: $lat, Longitudine: $lon"
-                Log.d("FallDetection", "Posizione corrente: $lastKnownLocation")
+                lastKnownLocation = "Latitude: $lat, Longitude: $lon"
+                Log.d("FallDetection", "Current location: $lastKnownLocation")
             } else {
-                lastKnownLocation = "Posizione non disponibile"
-                Log.d("FallDetection", "Non è stato possibile ottenere la posizione corrente.")
+                lastKnownLocation = "Location not available"
+                Log.d("FallDetection", "Unable to get current location.")
             }
         }
     }
 
     private fun createNotificationChannel() {
-        // if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Rilevamento Caduta"
-            val descriptionText = "Notifiche per rilevamento caduta"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        // }
+        val name = "Fall Detection"
+        val descriptionText = "Notifications for fall detection"
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+            description = descriptionText
+        }
+        val notificationManager: NotificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
     }
 
     private fun sendFallNotification() {
@@ -291,8 +295,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("Caduta Rilevata")
-            .setContentText("È stata rilevata una caduta. Apri l'app per confermare.")
+            .setContentTitle("Fall Detected")
+            .setContentText("A fall has been detected. Open the app to confirm.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -306,7 +310,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun sendEmergencySms(contactNumber: String) {
         if (contactNumber.isEmpty()) {
-            Log.e("FallDetection", "Nessun contatto di emergenza configurato.")
+            Log.e("FallDetection", "No emergency contact configured.")
             return
         }
 
@@ -324,26 +328,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         try {
-            val message = "Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation"
+            val message = "Warning: A possible fall has been detected. Location: $lastKnownLocation"
             val smsManager = getSystemService(SmsManager::class.java)
             smsManager?.sendTextMessage(contactNumber, null, message, null, null)
-            Log.d("FallDetection", "SMS di emergenza inviato a $contactNumber")
+            Log.d("FallDetection", "Emergency SMS sent to $contactNumber")
         } catch (e: SecurityException) {
-            Log.e("FallDetection", "Errore di sicurezza durante l'invio dell'SMS: ${e.message}")
+            Log.e("FallDetection", "Security error while sending SMS: ${e.message}")
         } catch (e: Exception) {
-            Log.e("FallDetection", "Errore durante l'invio dell'SMS: ${e.message}")
+            Log.e("FallDetection", "Error while sending SMS: ${e.message}")
         }
     }
 
     private fun sendEmergencyEmailUsingJavaMail(emergencyEmail: String) {
         if (emergencyEmail.isEmpty()) {
-            Log.e("FallDetection", "Nessun indirizzo email configurato.")
+            Log.e("FallDetection", "No email address configured.")
             return
         }
 
-        // Carica le credenziali dal file di configurazione
         val (username, password) = loadCredentials()
-        Log.d("FallDetection", "Caricate le credenziali: username=$username")
+        Log.d("FallDetection", "Loaded credentials: username=$username")
 
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
@@ -365,27 +368,27 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     Message.RecipientType.TO,
                     InternetAddress.parse(emergencyEmail)
                 )
-                subject = "Emergenza: Caduta Rilevata"
-                setText("Attenzione: è stata rilevata una possibile caduta. Posizione: $lastKnownLocation")
+                subject = "Emergency: Fall Detected"
+                setText("Warning: A possible fall has been detected. Location: $lastKnownLocation")
             }
 
             Thread {
                 try {
                     Transport.send(message)
-                    Log.d("FallDetection", "Email di emergenza inviata a $emergencyEmail")
+                    Log.d("FallDetection", "Emergency email sent to $emergencyEmail")
                 } catch (e: MessagingException) {
-                    Log.e("FallDetection", "Errore durante l'invio dell'email: ${e.message}")
+                    Log.e("FallDetection", "Error sending email: ${e.message}")
                 }
             }.start()
 
         } catch (e: MessagingException) {
-            Log.e("FallDetection", "Errore durante la preparazione dell'email: ${e.message}")
+            Log.e("FallDetection", "Error preparing email: ${e.message}")
         }
     }
 
     private fun makeEmergencyCall(phoneNumber: String) {
         if (phoneNumber.isEmpty()) {
-            Log.e("FallDetection", "Nessun numero di emergenza configurato.")
+            Log.e("FallDetection", "No emergency number configured.")
             return
         }
 
@@ -407,167 +410,172 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         startActivity(callIntent)
     }
 
-
     private fun cancelNotification() {
         with(NotificationManagerCompat.from(this)) {
             cancel(NOTIFICATION_ID)
         }
     }
-}
 
-@Composable
-fun Header(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(Color(0xFF00CED1))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Fall Detection App",
-            color = Color(0xFF00008B),
-            fontWeight = FontWeight.Bold,
-            fontSize = 24.sp
-        )
+    @Composable
+    fun Header(modifier: Modifier = Modifier) {
+        Box(
+            modifier = modifier
+                .background(Color(0xFF00CED1))
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Fall Detection App",
+                color = Color(0xFF00008B),
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp
+            )
+        }
     }
-}
 
-@Composable
-fun EmergencyContactInput(
-    emergencyContact: String,
-    emergencyEmail: String,
-    onEmergencyContactChanged: (String) -> Unit,
-    onEmergencyEmailChanged: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
+    @Composable
+    fun EmergencyContactInput(
+        emergencyContact: String,
+        emergencyEmail: String,
+        onEmergencyContactChanged: (String) -> Unit,
+        onEmergencyEmailChanged: (String) -> Unit
     ) {
-        Text(text = "Numero di emergenza", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        TextField(
-            value = emergencyContact,
-            onValueChange = { onEmergencyContactChanged(it) },
-            label = { Text("Inserisci numero di emergenza") },
-            placeholder = { Text("+391234567891") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(text = "Emergency Contact Number", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(
+                value = emergencyContact,
+                onValueChange = { onEmergencyContactChanged(it) },
+                label = { Text("Enter emergency number") },
+                placeholder = { Text("+391234567891") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Text(text = "Email di emergenza", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        TextField(
-            value = emergencyEmail,
-            onValueChange = { onEmergencyEmailChanged(it) },
-            label = { Text("Inserisci email di emergenza") },
-            placeholder = { Text("esempio@email.com") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            Text(text = "Emergency Email", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            TextField(
+                value = emergencyEmail,
+                onValueChange = { onEmergencyEmailChanged(it) },
+                label = { Text("Enter emergency email") },
+                placeholder = { Text("example@email.com") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
-}
 
-@Composable
-fun AccelerometerDisplay(
-    x: Float,
-    y: Float,
-    z: Float,
-    totalAcceleration: Float,
-    isFalling: Boolean,
-    fallTimestamp: String,
-    lastKnownLocation: String,
-    onFalseAlarmClicked: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    @Composable
+    fun AccelerometerDisplay(
+        x: Float,
+        y: Float,
+        z: Float,
+        totalAcceleration: Float,
+        isFalling: Boolean,
+        fallTimestamp: String,
+        lastKnownLocation: String,
+        onFalseAlarmClicked: () -> Unit,
+        modifier: Modifier = Modifier
     ) {
-        if (isFalling) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Red)
-                    .padding(16.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.align(Alignment.Center)
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (isFalling) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Red)
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = "CADUTA RILEVATA!",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "È un falso allarme?",
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = onFalseAlarmClicked,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.align(Alignment.Center)
                     ) {
                         Text(
-                            text = "Sì, è un falso allarme",
-                            color = Color.Red,
+                            text = "FALL DETECTED!",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Is it a false alarm?",
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onFalseAlarmClicked,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                        ) {
+                            Text(
+                                text = "Yes, it's a false alarm",
+                                color = Color.Red,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
+
+            Text(text = "Accelerometer Values", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(16.dp))
-        }
 
-        Text(text = "Valori dell'Accelerometro", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(text = "X: $x", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(text = "Y: $y", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(text = "Z: $z", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(text = "Accelerazione Totale: $totalAcceleration m/s²", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (isFalling) {
-            Text(text = "Ora della Caduta: $fallTimestamp", style = MaterialTheme.typography.bodyLarge)
+            Text(text = "X: $x", style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Posizione: $lastKnownLocation", style = MaterialTheme.typography.bodyLarge)
+
+            Text(text = "Y: $y", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(text = "Z: $z", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Total Acceleration: $totalAcceleration m/s²",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isFalling) {
+                Text(text = "Fall Time: $fallTimestamp", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Location: $lastKnownLocation",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
     }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun AccelerometerDisplayPreview() {
-    FallDetectionTheme {
-        Column {
-            Header()
-            EmergencyContactInput(
-                emergencyContact = "+391234567891",
-                emergencyEmail = "esempio@email.com",
-                onEmergencyContactChanged = {},
-                onEmergencyEmailChanged = {}
-            )
-            AccelerometerDisplay(
-                x = 0.0f,
-                y = 0.0f,
-                z = 0.0f,
-                totalAcceleration = 0.0f,
-                isFalling = true,
-                fallTimestamp = "15:30:00",
-                lastKnownLocation = "Latitudine: 45.0, Longitudine: 9.0",
-                onFalseAlarmClicked = {}
-            )
+    @Preview(showBackground = true)
+    @Composable
+    fun AccelerometerDisplayPreview() {
+        FallDetectionTheme {
+            Column {
+                Header()
+                EmergencyContactInput(
+                    emergencyContact = "+391234567891",
+                    emergencyEmail = "example@email.com",
+                    onEmergencyContactChanged = {},
+                    onEmergencyEmailChanged = {}
+                )
+                AccelerometerDisplay(
+                    x = 0.0f,
+                    y = 0.0f,
+                    z = 0.0f,
+                    totalAcceleration = 0.0f,
+                    isFalling = true,
+                    fallTimestamp = "15:30:00",
+                    lastKnownLocation = "Latitude: 45.0, Longitude: 9.0",
+                    onFalseAlarmClicked = {}
+                )
+            }
         }
     }
 }
